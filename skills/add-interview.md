@@ -216,7 +216,7 @@ Omit any property where value is unknown/empty.
 1. [Title] → [Company] / [Round] / [Type] / [Difficulty]
 2. ...
 
-DB: https://www.notion.so/1ef8c511ee8048b681b6fa8a63ac9d72
+DB: https://www.notion.so/Quant-Interview-Questions-322631537e43805c91dec3eac4269b26
 ```
 
 ---
