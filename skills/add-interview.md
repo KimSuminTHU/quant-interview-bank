@@ -93,19 +93,28 @@ For 1-3 problems, proceed directly without confirmation.
 
 ### Step 3.5: Upload files to Google Drive (if local files provided)
 
+**Config location**: `~/interview-db/.env` (or wherever the user cloned the repo)
+
 If the user provides local file paths (e.g. `.pdf`, `.ipynb`, `.csv`, `.zip`, `.docx`):
 
-1. Use the Python script to upload files to Drive and get shareable links:
+1. Read config from `.env` and run the upload script:
 ```bash
-cd /Users/suminkim/LinqAlpha
-.venv/bin/python3 - <<'EOF'
-import pickle, mimetypes
+cd ~/interview-db
+python3 - <<'EOF'
+import pickle, mimetypes, os
 from pathlib import Path
+from dotenv import load_dotenv
 from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 
-TOKEN_PATH = Path(".google_token.pickle")
+load_dotenv(Path(__file__).parent / ".env" if "__file__" in dir() else Path.home() / "interview-db/.env")
+
+TOKEN_PATH  = Path(os.environ["GOOGLE_TOKEN_PATH"])
+SECRET_PATH = Path(os.environ["GOOGLE_CLIENT_SECRET_PATH"])
+FOLDER_NAME = os.environ["INTERVIEW_DB_FOLDER_NAME"]
+SHARED_DRIVE_ID = os.environ.get("INTERVIEW_SHARED_DRIVE_ID", "")
+
 with open(TOKEN_PATH, "rb") as f:
     creds = pickle.load(f)
 if creds.expired and creds.refresh_token:
@@ -113,31 +122,36 @@ if creds.expired and creds.refresh_token:
 
 drive = build("drive", "v3", credentials=creds)
 
-# Get Interview DB root folder
-res = drive.files().list(
-    q="name='Interview DB' and mimeType='application/vnd.google-apps.folder' and 'root' in parents and trashed=false",
-    fields="files(id)"
-).execute()
-root_id = res["files"][0]["id"]
+# Find root folder — Shared Drive or personal Drive
+if SHARED_DRIVE_ID:
+    root_id = SHARED_DRIVE_ID
+else:
+    res = drive.files().list(
+        q=f"name='{FOLDER_NAME}' and mimeType='application/vnd.google-apps.folder' and 'root' in parents and trashed=false",
+        fields="files(id)"
+    ).execute()
+    root_id = res["files"][0]["id"]
 
-# Upload file — change path/company/season/position/round as needed
+# ── Fill these in ──────────────────────────────────────────
 local_path = Path("REPLACE_WITH_FILE_PATH")
-company = "REPLACE_COMPANY"
-season = "REPLACE_SEASON"   # e.g. "2025-2026"
-position = "REPLACE_POSITION"
-round_ = "REPLACE_ROUND"    # "OA" or "Interview"
+company    = "REPLACE_COMPANY"
+season     = os.environ.get("INTERVIEW_SEASON", "2025-2026")
+position   = "REPLACE_POSITION"
+round_     = "REPLACE_ROUND"   # "OA" or "Interview"
+# ──────────────────────────────────────────────────────────
 
 def find_or_create(name, parent):
     safe = name.replace("'", "\\'")
+    kwargs = dict(supportsAllDrives=True) if SHARED_DRIVE_ID else {}
     r = drive.files().list(
         q=f"name='{safe}' and mimeType='application/vnd.google-apps.folder' and '{parent}' in parents and trashed=false",
-        fields="files(id)"
+        fields="files(id)", **kwargs
     ).execute()
     if r["files"]: return r["files"][0]["id"]
-    return drive.files().create(
-        body={"name": name, "mimeType": "application/vnd.google-apps.folder", "parents": [parent]},
-        fields="id"
-    ).execute()["id"]
+    body = {"name": name, "mimeType": "application/vnd.google-apps.folder", "parents": [parent]}
+    if SHARED_DRIVE_ID:
+        body["driveId"] = SHARED_DRIVE_ID
+    return drive.files().create(body=body, fields="id", supportsAllDrives=True).execute()["id"]
 
 cid = find_or_create(company, root_id)
 sid = find_or_create(season, cid)
@@ -146,10 +160,11 @@ rid = find_or_create(round_, pid)
 
 mime, _ = mimetypes.guess_type(str(local_path))
 mime = mime or "application/octet-stream"
+kwargs = dict(supportsAllDrives=True) if SHARED_DRIVE_ID else {}
 f = drive.files().create(
     body={"name": local_path.name, "parents": [rid]},
     media_body=MediaFileUpload(str(local_path), mimetype=mime, resumable=True),
-    fields="id,webViewLink"
+    fields="id,webViewLink", **kwargs
 ).execute()
 print(f["webViewLink"])
 EOF
