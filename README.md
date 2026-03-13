@@ -1,5 +1,11 @@
 # Interview Question Bank — Setup Guide
 
+## 简介
+
+一个用于整理量化面试题库的工具，支持将题目（PDF、Notebook、截图、文字等）自动上传至 **Google Drive**，并同步录入 **Notion 数据库**（按公司、轮次、题型、难度分类）。配合 **Claude Code** 的 `/add-interview` 指令，粘贴题目或拖入文件即可完成录入，无需手动填表。
+
+---
+
 Personal quant interview question tracker using **Notion** (DB) + **Google Drive** (files) + **Claude Code** (skill for adding problems).
 
 ---
@@ -28,12 +34,12 @@ git clone <this-repo>
 cd interview-db
 python3 -m venv .venv
 source .venv/bin/activate
-pip install google-auth google-auth-oauthlib google-auth-httplib2 google-api-python-client
+pip install -r requirements.txt
 ```
 
 ---
 
-## Step 2: Google Drive / Sheets OAuth setup
+## Step 2: Google Drive OAuth setup
 
 ### 2a. Create a Google Cloud project
 
@@ -41,8 +47,6 @@ pip install google-auth google-auth-oauthlib google-auth-httplib2 google-api-pyt
 2. Create a new project (e.g. `interview-db`)
 3. Enable these APIs:
    - Google Drive API
-   - Google Sheets API
-   - Google Docs API
 
 ### 2b. Create OAuth credentials
 
@@ -167,7 +171,7 @@ python scripts/upload_unorganized.py
 
 This will:
 1. Upload each file to Google Drive (`Interview DB/Company/Season/Position/Round/`)
-2. Add a row to the master Google Sheet with a Drive link
+2. Create a page in the shared Notion DB with a Drive link in the body
 3. Clear the `unorganized/` folder when done
 
 To customize position/round per company, edit `COMPANY_META` in the script.
