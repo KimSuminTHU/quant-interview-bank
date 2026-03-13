@@ -147,7 +147,37 @@ Open `~/.claude/skills/add-interview.md` and update:
 
 ## Usage
 
-Once set up, just talk to Claude:
+### Option A — Bulk upload from `unorganized/` folder
+
+Drop files into the `unorganized/` folder, organized by company:
+
+```
+unorganized/
+  Citadel/
+    oa_problem.pdf
+    solution.ipynb
+  Goldman Sachs.pdf       ← single file, stem = company name
+```
+
+Then run:
+
+```bash
+python scripts/upload_unorganized.py
+```
+
+This will:
+1. Upload each file to Google Drive (`Interview DB/Company/Season/Position/Round/`)
+2. Add a row to the master Google Sheet with a Drive link
+3. Clear the `unorganized/` folder when done
+
+To customize position/round per company, edit `COMPANY_META` in the script.
+To skip a company, add it to `SKIP_COMPANIES`.
+
+---
+
+### Option B — Add problems via Claude (text, screenshot, PDF)
+
+Once the skill is installed, just talk to Claude Code:
 
 ```
 "Citadel OA 문제야. X,Y~Uniform[0,1]. P(|X-Y|>0.5) 구해."
@@ -166,7 +196,7 @@ Claude will:
 2. Infer company, round, type, difficulty, sub-category
 3. Check if any coding problems match LeetCode
 4. Upload any attached files to Google Drive
-5. Create pages in Notion DB with Drive links in the body
+5. Create pages in the shared Notion DB with Drive links in the body
 
 ---
 
@@ -175,13 +205,12 @@ Claude will:
 ```
 interview-db/
 ├── scripts/
-│   ├── interview_drive_setup.py   # Initial bulk upload from CSV
-│   ├── upload_unorganized.py      # Upload loose files to Drive + add Sheet rows
-│   └── backfill_sheet_rows.py     # Add Sheet rows for files already in Drive
+│   └── upload_unorganized.py   # Bulk upload from unorganized/ folder
 ├── skills/
-│   └── add-interview.md           # Claude skill (copy to ~/.claude/skills/)
-├── client_secret.json             # OAuth credentials (DO NOT commit — gitignored)
-├── .google_token.pickle           # OAuth token (DO NOT commit — gitignored)
+│   └── add-interview.md        # Claude skill (copy to ~/.claude/skills/)
+├── unorganized/                # Drop files here before running upload script
+├── .env                        # Your config (gitignored)
+├── .env.example                # Config template
 └── README.md
 ```
 
