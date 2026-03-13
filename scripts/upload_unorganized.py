@@ -1,5 +1,5 @@
 """
-Upload unorganized/ files to Google Drive Interview DB + add Notion DB rows.
+Upload unorganized/ files to Google Drive + add Notion DB rows.
 
 Folder structure expected:
   unorganized/
@@ -18,6 +18,7 @@ import json
 import mimetypes
 import os
 import pickle
+import requests
 import shutil
 import time
 from pathlib import Path
@@ -39,12 +40,18 @@ TOKEN_PATH        = Path(os.environ["GOOGLE_TOKEN_PATH"])
 PROGRESS_PATH     = ROOT_DIR / ".upload_progress.json"
 ROOT_FOLDER_ID    = os.environ.get("INTERVIEW_ROOT_FOLDER_ID", "").strip()
 ROOT_FOLDER_NAME  = os.environ.get("INTERVIEW_DB_FOLDER_NAME", "Interview DB")
-MASTER_SHEET_NAME = os.environ.get("INTERVIEW_SHEET_NAME", "Interview Question Bank")
 SEASON            = os.environ.get("INTERVIEW_SEASON", "2025-2026")
+NOTION_DB_ID      = os.environ["NOTION_DB_ID"]
+NOTION_API_KEY    = os.environ["NOTION_API_KEY"]
+
+NOTION_HEADERS = {
+    "Authorization": f"Bearer {NOTION_API_KEY}",
+    "Content-Type": "application/json",
+    "Notion-Version": "2022-06-28",
+}
 
 SCOPES = [
     "https://www.googleapis.com/auth/drive",
-    "https://www.googleapis.com/auth/spreadsheets",
 ]
 
 # Only upload these file types (problem files, not raw data)
@@ -121,17 +128,9 @@ def find_or_create_folder(drive, name, parent_id):
 
 def get_root_folder_id(drive):
     if ROOT_FOLDER_ID:
-        # Use the shared folder ID directly
         return ROOT_FOLDER_ID
-    # Fall back: find by name in personal Drive root
     q = (f"name='{ROOT_FOLDER_NAME}' and mimeType='application/vnd.google-apps.folder' "
          f"and 'root' in parents and trashed=false")
-    res = retry(lambda: drive.files().list(q=q, fields="files(id)").execute())
-    return res["files"][0]["id"]
-
-def get_master_sheet_id(drive, root_id):
-    q = (f"name='{MASTER_SHEET_NAME}' and mimeType='application/vnd.google-apps.spreadsheet' "
-         f"and '{root_id}' in parents and trashed=false")
     res = retry(lambda: drive.files().list(q=q, fields="files(id)").execute())
     return res["files"][0]["id"]
 
@@ -145,18 +144,56 @@ def upload_file(drive, local_path, parent_id):
     ).execute())
     return f["webViewLink"]
 
-def append_sheet_row(sheets, spreadsheet_id, row):
-    retry(lambda: sheets.spreadsheets().values().append(
-        spreadsheetId=spreadsheet_id,
-        range="Sheet1!A1",
-        valueInputOption="USER_ENTERED",
-        body={"values": [row]},
-    ).execute())
+# ── Notion helpers ────────────────────────────────────────────────────────────
+
+def notion_create_page(company, position, round_, filename, stem, drive_link):
+    """Create one Notion DB row with Drive link in the page body."""
+    db_id = NOTION_DB_ID
+
+    props = {
+        "Problem Title": {"title": [{"text": {"content": stem}}]},
+        "Season": {"select": {"name": SEASON}},
+        "Round": {"select": {"name": round_}},
+    }
+    if company:
+        props["Company"] = {"select": {"name": company}}
+
+    body = {
+        "parent": {"database_id": db_id},
+        "properties": props,
+        "children": [
+            {
+                "object": "block",
+                "type": "paragraph",
+                "paragraph": {
+                    "rich_text": [{"type": "text", "text": {"content": f"Source file: {filename}"}}]
+                }
+            },
+            {"object": "block", "type": "divider", "divider": {}},
+            {
+                "object": "block",
+                "type": "paragraph",
+                "paragraph": {
+                    "rich_text": [
+                        {"type": "text", "text": {"content": "📎 "}},
+                        {"type": "text", "text": {"content": filename, "link": {"url": drive_link}}}
+                    ]
+                }
+            },
+        ]
+    }
+    res = requests.post(
+        "https://api.notion.com/v1/pages",
+        headers=NOTION_HEADERS,
+        json=body,
+        timeout=30,
+    )
+    res.raise_for_status()
+    return res.json()["url"]
 
 # ── File collection ───────────────────────────────────────────────────────────
 
 def collect_problem_files(company_path):
-    """Collect only problem-relevant files, skipping data folders."""
     files = []
     if company_path.is_file():
         if company_path.suffix.lower() in UPLOAD_EXTENSIONS:
@@ -181,13 +218,9 @@ def main():
         return
 
     print("Authenticating...")
-    creds  = get_credentials()
-    drive  = build("drive",  "v3", credentials=creds)
-    sheets = build("sheets", "v4", credentials=creds)
-
-    root_id  = get_root_folder_id(drive)
-    sheet_id = get_master_sheet_id(drive, root_id)
-    print(f"Master Sheet: https://docs.google.com/spreadsheets/d/{sheet_id}")
+    creds = get_credentials()
+    drive = build("drive", "v3", credentials=creds)
+    root_id = get_root_folder_id(drive)
 
     progress = load_progress()
     uploaded = progress["uploaded"]
@@ -228,16 +261,9 @@ def main():
                 link = upload_file(drive, f, rid)
                 uploaded[key] = link
                 save_progress(progress)
-                row = [
-                    company, SEASON, position, round_,
-                    "", f.stem,
-                    "", "",
-                    "", "",
-                    f"Source file: {f.name}", "No",
-                    f'=HYPERLINK("{link}", "{f.name}")',
-                ]
-                append_sheet_row(sheets, sheet_id, row)
-                print(f"  ✓ added")
+
+                notion_url = notion_create_page(company, position, round_, f.name, f.stem, link)
+                print(f"  ✓ Drive + Notion → {notion_url}")
             except Exception as e:
                 print(f"  ERROR {f.name}: {e}")
 
