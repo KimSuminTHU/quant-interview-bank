@@ -72,25 +72,50 @@ This creates `.google_token.pickle` in the project root — keep this file priva
 
 ---
 
-## Step 3: Notion MCP setup
+## Step 3: Notion API setup
 
-The `/add-interview` skill uses the Notion MCP server to write directly to the DB.
+The upload script and `/add-interview` skill both write to the shared Notion DB via the Notion API. Each user needs their own **Internal Integration Token**.
 
-### 3a. Install Notion MCP
+### 3a. Create a Notion integration
+
+1. Go to [notion.so/profile/integrations](https://www.notion.so/profile/integrations)
+2. Click **New integration**
+3. Give it a name (e.g. `interview-db`)
+4. Set **Associated workspace** to the workspace that contains the shared DB
+5. Under **Capabilities**, enable: **Read content**, **Update content**, **Insert content**
+6. Click **Save** → copy the **Internal Integration Secret** (starts with `ntn_...`)
+
+### 3b. Connect the integration to the shared DB
+
+1. Open the **Quant Interview Questions** Notion page (link shared by the repo owner)
+2. Click **•••** (top-right) → **Connections** → **Connect to** → find your integration name
+3. Confirm — the integration now has write access to the DB
+
+### 3c. Add your token to `.env`
+
+```
+NOTION_API_KEY=ntn_your_integration_token_here
+```
+
+---
+
+## Step 4: Notion MCP setup (for `/add-interview` Claude skill)
+
+The `/add-interview` skill uses the Notion MCP server to interact with Notion directly from Claude Code.
+
+### 4a. Install Notion MCP
 
 ```bash
 npm install -g @notionhq/notion-mcp-server
 ```
 
-### 3b. Get your Notion integration token
+### 4b. Configure MCP in Claude Code
 
-1. Go to [notion.so/my-integrations](https://www.notion.so/my-integrations)
-2. Create a new integration → copy the **Internal Integration Token**
-3. In the Notion workspace, open the **Interview Question Bank** database → **Share** → invite your integration
+```bash
+claude mcp add notion --command notion-mcp-server --env NOTION_API_KEY=ntn_your_token_here
+```
 
-### 3c. Configure MCP in Claude Code
-
-Add to your `~/.claude/claude.json` (or run `claude mcp add`):
+Or manually add to `~/.claude/claude.json`:
 
 ```json
 {
@@ -98,54 +123,28 @@ Add to your `~/.claude/claude.json` (or run `claude mcp add`):
     "notion": {
       "command": "notion-mcp-server",
       "env": {
-        "NOTION_API_KEY": "your_integration_token_here"
+        "NOTION_API_KEY": "ntn_your_token_here"
       }
     }
   }
 }
 ```
 
-Or via CLI:
-```bash
-claude mcp add notion --command notion-mcp-server --env NOTION_API_KEY=secret_xxx
-```
-
 ---
 
-## Step 4: Install the Claude skill
-
-Copy the skill file to your Claude skills directory:
+## Step 5: Install the Claude skill
 
 ```bash
 mkdir -p ~/.claude/skills
 cp skills/add-interview.md ~/.claude/skills/add-interview.md
 ```
 
-Then register it in `~/.claude/CLAUDE.md` (create if it doesn't exist):
+Then add to `~/.claude/CLAUDE.md` (create if it doesn't exist):
 
 ```markdown
 ## Skills
 - `/add-interview` → Add Interview Problems skill at `~/.claude/skills/add-interview.md`. Parses unorganized interview problems and adds them to the Notion Interview Question Bank.
 ```
-
-### 4a. Update the skill config for your setup
-
-Open `~/.claude/skills/add-interview.md` and update:
-
-| Field | Where to change | What to put |
-|---|---|---|
-| Notion DB ID | `## Target Notion DB` section | Your DB's ID from the URL |
-| Data Source ID | same section | From `notion-fetch` on your DB |
-| Drive project root | Step 3.5 script | Path to your project |
-| `venv` path | Step 3.5 script | Path to your `.venv` |
-
----
-
-## Step 5: Duplicate the Notion DB
-
-1. Open the shared Notion page → **Duplicate** into your own workspace
-2. The DB will have a new ID — update it in the skill file (Step 4a above)
-3. You can add your own companies to the `Company` select field
 
 ---
 
