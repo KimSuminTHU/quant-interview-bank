@@ -1,0 +1,7 @@
+client_secret*.json
+.google_token.pickle
+.upload_unorganized_progress.json
+.venv/
+__pycache__/
+*.pyc
+.DS_Store
