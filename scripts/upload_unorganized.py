@@ -37,7 +37,7 @@ UNORGANIZED_ROOT  = ROOT_DIR / "unorganized"
 CLIENT_SECRET     = Path(os.environ["GOOGLE_CLIENT_SECRET_PATH"])
 TOKEN_PATH        = Path(os.environ["GOOGLE_TOKEN_PATH"])
 PROGRESS_PATH     = ROOT_DIR / ".upload_progress.json"
-SHARED_DRIVE_ID   = os.environ.get("INTERVIEW_SHARED_DRIVE_ID", "").strip()
+ROOT_FOLDER_ID    = os.environ.get("INTERVIEW_ROOT_FOLDER_ID", "").strip()
 ROOT_FOLDER_NAME  = os.environ.get("INTERVIEW_DB_FOLDER_NAME", "Interview DB")
 MASTER_SHEET_NAME = os.environ.get("INTERVIEW_SHEET_NAME", "Interview Question Bank")
 SEASON            = os.environ.get("INTERVIEW_SEASON", "2025-2026")
@@ -107,44 +107,41 @@ def find_or_create_folder(drive, name, parent_id):
     if key in _folder_cache:
         return _folder_cache[key]
     safe = name.replace("'", "\\'")
-    kwargs = dict(supportsAllDrives=True) if SHARED_DRIVE_ID else {}
     q = (f"name='{safe}' and mimeType='application/vnd.google-apps.folder' "
          f"and '{parent_id}' in parents and trashed=false")
-    res = retry(lambda: drive.files().list(q=q, fields="files(id)", **kwargs).execute())
+    res = retry(lambda: drive.files().list(q=q, fields="files(id)").execute())
     files = res.get("files", [])
     if files:
         _folder_cache[key] = files[0]["id"]
         return files[0]["id"]
     body = {"name": name, "mimeType": "application/vnd.google-apps.folder", "parents": [parent_id]}
-    if SHARED_DRIVE_ID:
-        body["driveId"] = SHARED_DRIVE_ID
-    fid = retry(lambda: drive.files().create(body=body, fields="id", supportsAllDrives=True).execute())["id"]
+    fid = retry(lambda: drive.files().create(body=body, fields="id").execute())["id"]
     _folder_cache[key] = fid
     return fid
 
 def get_root_folder_id(drive):
-    if SHARED_DRIVE_ID:
-        return SHARED_DRIVE_ID
+    if ROOT_FOLDER_ID:
+        # Use the shared folder ID directly
+        return ROOT_FOLDER_ID
+    # Fall back: find by name in personal Drive root
     q = (f"name='{ROOT_FOLDER_NAME}' and mimeType='application/vnd.google-apps.folder' "
          f"and 'root' in parents and trashed=false")
     res = retry(lambda: drive.files().list(q=q, fields="files(id)").execute())
     return res["files"][0]["id"]
 
 def get_master_sheet_id(drive, root_id):
-    kwargs = dict(supportsAllDrives=True, includeItemsFromAllDrives=True) if SHARED_DRIVE_ID else {}
     q = (f"name='{MASTER_SHEET_NAME}' and mimeType='application/vnd.google-apps.spreadsheet' "
          f"and '{root_id}' in parents and trashed=false")
-    res = retry(lambda: drive.files().list(q=q, fields="files(id)", **kwargs).execute())
+    res = retry(lambda: drive.files().list(q=q, fields="files(id)").execute())
     return res["files"][0]["id"]
 
 def upload_file(drive, local_path, parent_id):
     mime, _ = mimetypes.guess_type(str(local_path))
     mime = mime or "application/octet-stream"
     body = {"name": local_path.name, "parents": [parent_id]}
-    kwargs = dict(supportsAllDrives=True) if SHARED_DRIVE_ID else {}
     media = MediaFileUpload(str(local_path), mimetype=mime, resumable=True)
     f = retry(lambda: drive.files().create(
-        body=body, media_body=media, fields="id,webViewLink", **kwargs
+        body=body, media_body=media, fields="id,webViewLink"
     ).execute())
     return f["webViewLink"]
 

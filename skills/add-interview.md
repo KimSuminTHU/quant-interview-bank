@@ -113,7 +113,7 @@ load_dotenv(Path(__file__).parent / ".env" if "__file__" in dir() else Path.home
 TOKEN_PATH  = Path(os.environ["GOOGLE_TOKEN_PATH"])
 SECRET_PATH = Path(os.environ["GOOGLE_CLIENT_SECRET_PATH"])
 FOLDER_NAME = os.environ["INTERVIEW_DB_FOLDER_NAME"]
-SHARED_DRIVE_ID = os.environ.get("INTERVIEW_SHARED_DRIVE_ID", "")
+ROOT_FOLDER_ID = os.environ.get("INTERVIEW_ROOT_FOLDER_ID", "").strip()
 
 with open(TOKEN_PATH, "rb") as f:
     creds = pickle.load(f)
@@ -123,8 +123,8 @@ if creds.expired and creds.refresh_token:
 drive = build("drive", "v3", credentials=creds)
 
 # Find root folder — Shared Drive or personal Drive
-if SHARED_DRIVE_ID:
-    root_id = SHARED_DRIVE_ID
+if ROOT_FOLDER_ID:
+    root_id = ROOT_FOLDER_ID
 else:
     res = drive.files().list(
         q=f"name='{FOLDER_NAME}' and mimeType='application/vnd.google-apps.folder' and 'root' in parents and trashed=false",
@@ -142,15 +142,15 @@ round_     = "REPLACE_ROUND"   # "OA" or "Interview"
 
 def find_or_create(name, parent):
     safe = name.replace("'", "\\'")
-    kwargs = dict(supportsAllDrives=True) if SHARED_DRIVE_ID else {}
+    kwargs = dict(supportsAllDrives=True) if ROOT_FOLDER_ID else {}
     r = drive.files().list(
         q=f"name='{safe}' and mimeType='application/vnd.google-apps.folder' and '{parent}' in parents and trashed=false",
         fields="files(id)", **kwargs
     ).execute()
     if r["files"]: return r["files"][0]["id"]
     body = {"name": name, "mimeType": "application/vnd.google-apps.folder", "parents": [parent]}
-    if SHARED_DRIVE_ID:
-        body["driveId"] = SHARED_DRIVE_ID
+    if ROOT_FOLDER_ID:
+        body["driveId"] = ROOT_FOLDER_ID
     return drive.files().create(body=body, fields="id", supportsAllDrives=True).execute()["id"]
 
 cid = find_or_create(company, root_id)
@@ -160,7 +160,7 @@ rid = find_or_create(round_, pid)
 
 mime, _ = mimetypes.guess_type(str(local_path))
 mime = mime or "application/octet-stream"
-kwargs = dict(supportsAllDrives=True) if SHARED_DRIVE_ID else {}
+kwargs = dict(supportsAllDrives=True) if ROOT_FOLDER_ID else {}
 f = drive.files().create(
     body={"name": local_path.name, "parents": [rid]},
     media_body=MediaFileUpload(str(local_path), mimetype=mime, resumable=True),
